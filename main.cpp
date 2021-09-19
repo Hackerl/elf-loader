@@ -9,7 +9,7 @@ int main(int argc, char **argv, char **env) {
         return -1;
     }
 
-    ELFLoader loader;
+    CELFLoader loader;
 
     if (!loader.load(argv[1]))
         return -1;

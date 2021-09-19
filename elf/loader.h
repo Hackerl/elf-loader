@@ -4,9 +4,15 @@
 #include <string>
 #include <elfio/elfio.hpp>
 
-class ELFLoader {
+struct CELFImage {
+    unsigned long base;
+    unsigned long minVA;
+    unsigned long maxVA;
+};
+
+class CELFLoader {
 public:
-    ELFLoader();
+    CELFLoader();
 
 public:
     bool load(const std::string& file);
@@ -16,9 +22,7 @@ public:
 
 private:
     bool loadInterpreter(const char *interpreter);
-
-private:
-    unsigned long loadSegments(const ELFIO::elfio &reader);
+    bool loadSegments(const ELFIO::elfio &reader, CELFImage &image);
 
 private:
     unsigned long roundPage(unsigned long address) const;

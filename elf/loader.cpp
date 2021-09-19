@@ -7,11 +7,11 @@
 constexpr auto STACK_ALIGN = 16;
 constexpr auto AV_PATH = "/proc/self/auxv";
 
-ELFLoader::ELFLoader() {
+CELFLoader::CELFLoader() {
     mPagesize = sysconf(_SC_PAGESIZE);
 }
 
-bool ELFLoader::load(const std::string &file) {
+bool CELFLoader::load(const std::string &file) {
     ELFIO::elfio reader;
 
     if (!reader.load(file))
@@ -35,12 +35,13 @@ bool ELFLoader::load(const std::string &file) {
 
     LOG_INFO("load program: %s", file.c_str());
 
-    mProgramBase = loadSegments(reader);
+    CELFImage image = {};
 
-    if (!mProgramBase)
+    if (!loadSegments(reader, image))
         return false;
 
-    mProgramEntry = reader.get_entry() + (reader.get_type() == ET_DYN ? mProgramBase : 0);
+    mProgramBase = image.base;
+    mProgramEntry = image.base + reader.get_entry() - image.minVA;
     mProgramHeader = mProgramBase + reader.get_segments_offset();
     mProgramHeaderNum = reader.segments.size();
     mProgramHeaderSize = reader.get_segment_entry_size();
@@ -48,15 +49,15 @@ bool ELFLoader::load(const std::string &file) {
     return true;
 }
 
-unsigned long ELFLoader::roundPage(unsigned long address) const {
+unsigned long CELFLoader::roundPage(unsigned long address) const {
     return (address + mPagesize - 1) & ~(mPagesize - 1);
 }
 
-unsigned long ELFLoader::truncatePage(unsigned long address) const {
+unsigned long CELFLoader::truncatePage(unsigned long address) const {
     return address & ~(mPagesize - 1);
 }
 
-bool ELFLoader::loadInterpreter(const char *interpreter) {
+bool CELFLoader::loadInterpreter(const char *interpreter) {
     LOG_INFO("load interpreter: %s", interpreter);
 
     ELFIO::elfio reader;
@@ -64,17 +65,18 @@ bool ELFLoader::loadInterpreter(const char *interpreter) {
     if (!reader.load(interpreter))
         return false;
 
-    mInterpreterBase = loadSegments(reader);
+    CELFImage image = {};
 
-    if (!mInterpreterBase)
+    if (!loadSegments(reader, image))
         return false;
 
-    mInterpreterEntry = reader.get_entry() + (reader.get_type() == ET_DYN ? mInterpreterBase : 0);
+    mInterpreterBase = image.base;
+    mInterpreterEntry = image.base + reader.get_entry() - image.minVA;
 
     return true;
 }
 
-unsigned long ELFLoader::loadSegments(const ELFIO::elfio &reader) {
+bool CELFLoader::loadSegments(const ELFIO::elfio &reader, CELFImage &image) {
     std::vector<ELFIO::segment *> loads;
 
     std::copy_if(
@@ -123,7 +125,7 @@ unsigned long ELFLoader::loadSegments(const ELFIO::elfio &reader) {
 
     for (const auto &segment : loads) {
         unsigned long offset = segment->get_virtual_address() & (mPagesize - 1);
-        unsigned long start = (dyn ? (unsigned long)base : 0) + truncatePage(segment->get_virtual_address());
+        unsigned long start = (unsigned long)base + truncatePage(segment->get_virtual_address()) - minVA;
         unsigned long size = roundPage(segment->get_memory_size() + offset);
 
         LOG_INFO("segment: 0x%lx[0x%lx]", start, size);
@@ -140,7 +142,7 @@ unsigned long ELFLoader::loadSegments(const ELFIO::elfio &reader) {
             LOG_ERROR("mmap failed: %s", strerror(errno));
 
             munmap(base, maxVA - minVA);
-            return 0;
+            return false;
         }
 
         memcpy((unsigned char *)p + offset, segment->get_data(), segment->get_file_size());
@@ -152,14 +154,20 @@ unsigned long ELFLoader::loadSegments(const ELFIO::elfio &reader) {
             LOG_ERROR("change memory protection failed: %s", strerror(errno));
 
             munmap(base, maxVA - minVA);
-            return 0;
+            return false;
         }
     }
 
-    return (unsigned long)base;
+    image = {
+            (unsigned long)base,
+            minVA,
+            maxVA
+    };
+
+    return true;
 }
 
-void ELFLoader::jump(int argc, char **argv, char **env) {
+void CELFLoader::jump(int argc, char **argv, char **env) {
     std::ifstream stream = std::ifstream(AV_PATH);
     std::vector<char> av((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
