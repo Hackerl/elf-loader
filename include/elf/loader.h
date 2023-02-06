@@ -16,8 +16,8 @@ typedef struct {
     size_t header_size;
 } elf_context_t;
 
-int load_elf(const char *path, elf_context_t ctx[2]);
-int jump_to_entry(elf_context_t ctx[2], int argc, char **argv, char **envp);
+int load_elf_file(const char *path, elf_context_t ctx[2]);
+int jump_to_entry(elf_context_t ctx[2], int argc, char *argv[], char *envp[]);
 
 #ifdef __cplusplus
 }

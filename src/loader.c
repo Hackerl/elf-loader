@@ -158,7 +158,7 @@ static int load_segments(char *buffer, int fd, elf_image_t *image) {
     return 0;
 }
 
-int load_elf(const char *path, elf_context_t ctx[2]) {
+int load_elf_file(const char *path, elf_context_t ctx[2]) {
     struct stat sb = {};
 
     if (stat(path, &sb) < 0)
@@ -201,7 +201,7 @@ int load_elf(const char *path, elf_context_t ctx[2]) {
                 return -1;
             }
 
-            if (load_elf(interpreter, ctx + 1) < 0) {
+            if (load_elf_file(interpreter, ctx + 1) < 0) {
                 close(fd);
                 return -1;
             }
@@ -228,7 +228,7 @@ int load_elf(const char *path, elf_context_t ctx[2]) {
     return 0;
 }
 
-int jump_to_entry(elf_context_t ctx[2], int argc, char **argv, char **envp) {
+int jump_to_entry(elf_context_t ctx[2], int argc, char *argv[], char *envp[]) {
     int fd = open(AV_PATH, O_RDONLY, 0);
 
     if (fd < 0)
@@ -285,7 +285,7 @@ int jump_to_entry(elf_context_t ctx[2], int argc, char **argv, char **envp) {
 
     *(char **) p++ = NULL;
 
-    for (char **i = envp; *i; i++)
+    for (char **i = envp; i && *i; i++)
         *(char **) p++ = *i;
 
     *(char **) p++ = NULL;
