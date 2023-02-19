@@ -1,11 +1,13 @@
 #include <elf/loader.h>
 #include <sys/stat.h>
+#include <sys/auxv.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <elf.h>
 #include <sys/mman.h>
 #include <string.h>
 
+#define AT_MAX          60
 #define STACK_ALIGN     16
 
 #define PROGRAM         0
@@ -45,6 +47,41 @@ typedef struct {
     uintptr_t minVA;
     uintptr_t maxVA;
 } elf_image_t;
+
+static size_t read_auxv(Elf_auxv_t *auxv, size_t size) {
+    int fd = open(AV_PATH, O_RDONLY, 0);
+
+    if (fd < 0) {
+        int n = 0;
+
+        for (int i = 0; i < AT_MAX; i++) {
+            if (n >= size)
+                return -1;
+
+            unsigned long val = getauxval(i);
+
+            if (val == 0)
+                continue;
+
+            auxv[n / sizeof(Elf_auxv_t)].a_type = i;
+            auxv[n / sizeof(Elf_auxv_t)].a_un.a_val = val;
+
+            n += sizeof(Elf_auxv_t);
+        }
+
+        return n;
+    }
+
+    ssize_t n = read(fd, auxv, size);
+
+    if (n < 0) {
+        close(fd);
+        return 0;
+    }
+
+    close(fd);
+    return n;
+}
 
 static int check_header(Elf_Ehdr *ehdr) {
     if (ehdr->e_ident[EI_MAG0] != ELFMAG0 ||
@@ -218,23 +255,13 @@ int load_elf_file(const char *path, elf_context_t ctx[2]) {
 }
 
 int jump_to_entry(elf_context_t ctx[2], int argc, char *argv[], char *envp[]) {
-    int fd = open(AV_PATH, O_RDONLY, 0);
+    Elf_auxv_t auxv[AT_MAX] = {};
+    size_t length = read_auxv(auxv, sizeof(auxv) - sizeof(Elf_auxv_t));
 
-    if (fd < 0)
+    if (length == 0)
         return -1;
 
-    char av[1024] = {};
-
-    ssize_t length = read(fd, av, sizeof(av));
-
-    if (length == -1) {
-        close(fd);
-        return -1;
-    }
-
-    close(fd);
-
-    for (Elf_auxv_t *i = (Elf_auxv_t *) av; i->a_type != AT_NULL; i++) {
+    for (Elf_auxv_t *i = auxv; i->a_type != AT_NULL; i++) {
         switch (i->a_type) {
             case AT_PHDR:
                 i->a_un.a_val = ctx[PROGRAM].header;
@@ -279,7 +306,7 @@ int jump_to_entry(elf_context_t ctx[2], int argc, char *argv[], char *envp[]) {
 
     *(char **) p++ = NULL;
 
-    memcpy(p, av, length);
+    memcpy(p, auxv, length);
 
     uintptr_t entry = ctx[INTERPRETER].entry ? ctx[INTERPRETER].entry : ctx[PROGRAM].entry;
 
