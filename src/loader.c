@@ -24,16 +24,12 @@
 
 #if __i386__ || __arm__
 
-#define BUFFER_SIZE     512
-
 #define Elf_Ehdr        Elf32_Ehdr
 #define Elf_Phdr        Elf32_Phdr
 #define Elf_auxv_t      Elf32_auxv_t
 #define ELF_CLASS       ELFCLASS32
 
 #elif __x86_64__ || __aarch64__
-
-#define BUFFER_SIZE     832
 
 #define Elf_Ehdr        Elf64_Ehdr
 #define Elf_Phdr        Elf64_Phdr
